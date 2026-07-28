@@ -61,8 +61,11 @@ Session 约 30 天过期，过期后工作流会突然开始失败且报错很�
 
 `Settings → Developer settings → Personal access tokens → Fine-grained tokens`
 
-- Repository access：只选这一个仓库
-- Permissions：`Actions: Read and write` + `Contents: Read`
+- Repository access：`Only select repositories` → 只勾这一个仓库
+- Repository permissions：只需 **`Actions: Read and write`**
+  （`Metadata: Read-only` 会自动勾上且不能取消，正常；其余全部保持 No access）
+
+控制台用到的 6 个接口全部归 Actions 权限：dispatch 要 write，查运行/查产物/下载产物要 read。
 
 签发后填进本地网页，**不要写进任何文件推上来**。
 
