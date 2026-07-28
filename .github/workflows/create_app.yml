@@ -1,0 +1,75 @@
+name: Create App
+
+run-name: 创建 App ${{ inputs.app_name }} · ${{ inputs.request_id }}
+
+# ⚠️ 本任务只能用 Apple ID + FASTLANE_SESSION。
+#    Apple 未开放 App Store Connect API 的建 App 端点，API Key 模式会直接失败。
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: 前端生成的任务 ID
+        required: false
+        default: manual
+      credentials:
+        description: 凭据 JSON（必须是 apple_id 模式）；留空则用仓库 Secret
+        required: false
+        default: ''
+      bundle_identifier:
+        description: Bundle ID，必须已在开发者门户注册
+        required: true
+      app_name:
+        description: App 名称（App Store 上全局唯一）
+        required: true
+      primary_language:
+        description: 主要语言
+        required: true
+        default: zh-Hans
+        type: choice
+        options:
+          - zh-Hans
+          - en-US
+          - en-GB
+          - en-AU
+      sku:
+        description: SKU 内部编号，留空则用 Bundle ID
+        required: false
+        default: ''
+      company_name:
+        description: 公司名称（账号首次创建 App 时需要）
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  create:
+    runs-on: ${{ vars.RUNNER_LABEL || 'macos-latest' }}
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-apple
+        with:
+          credentials: ${{ inputs.credentials || secrets.APPLE_CREDENTIALS }}
+
+      - name: Create app
+        env:
+          BUNDLE_IDENTIFIER: ${{ inputs.bundle_identifier }}
+          APP_NAME: ${{ inputs.app_name }}
+          PRIMARY_LANGUAGE: ${{ inputs.primary_language }}
+          SKU: ${{ inputs.sku }}
+          COMPANY_NAME: ${{ inputs.company_name }}
+        run: ruby scripts/create_app.rb
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 7

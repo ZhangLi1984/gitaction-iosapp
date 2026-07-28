@@ -62,21 +62,85 @@ def login_with_apple_id!
       portal_team_id: team_id
     )
   rescue Spaceship::InvalidUserCredentialsError => e
-    # Apple 返回 401 时抛这个，报错本身不区分原因，这里把常见原因列清楚
-    warn ""
-    warn "[排查] Apple 拒绝了这组账号密码，常见原因："
-    warn "  1. 用了 App 专用密码（app-specific password）。开发者门户登录必须用 Apple 账号的真实密码，"
-    warn "     App 专用密码只对上传/公证有效。"
-    warn "  2. 密码本身不对。先去 https://developer.apple.com/account 手动登录验证一次。"
-    warn "  3. 密码里有空格或不可见字符被一起复制进来了。"
-    warn "  4. 账号被 Apple 要求改密码 / 需接受新协议，此时网页登录会有提示。"
-    warn ""
-    warn "[建议] 改用 App Store Connect API Key 模式，不需要密码、不受 2FA 影响、不会 30 天过期。"
-    warn "       生成路径：App Store Connect → 用户和访问 → 集成 → 团队密钥"
-    warn ""
+    warn_credential_hints
     raise e
   end
   puts "[认证] 成功"
+end
+
+# Apple 返回 401 时报错本身不区分原因，这里把常见原因列清楚
+def warn_credential_hints
+  warn ""
+  warn "[排查] Apple 拒绝了这组账号密码，常见原因："
+  warn "  1. 用了 App 专用密码（app-specific password）。开发者门户登录必须用 Apple 账号的真实密码，"
+  warn "     App 专用密码只对上传/公证有效。"
+  warn "  2. 密码本身不对。先去 https://developer.apple.com/account 手动登录验证一次。"
+  warn "  3. 密码里有空格或不可见字符被一起复制进来了。"
+  warn "  4. 账号被 Apple 要求改密码 / 需接受新协议，此时网页登录会有提示。"
+  warn ""
+end
+
+# 创建 App 只能走旧的 iTunes Connect 接口（Apple 未开放 API Key 方式）
+def login_tunes!
+  unless ENV["ASC_KEY_ID"].to_s.strip.empty?
+    raise "创建 App 不支持 App Store Connect API Key —— Apple 没有开放这个接口。" \
+          "请在网页上把凭据模式切到「Apple ID」，并提供 FASTLANE_SESSION。"
+  end
+
+  apple_id = env("APPLE_ID")
+  password = env("APPLE_PASSWORD")
+  puts "[认证] 使用 Apple ID 登录 App Store Connect: #{mask_email(apple_id)}"
+
+  if ENV["FASTLANE_SESSION"].to_s.strip.empty?
+    warn "[警告] 未提供 FASTLANE_SESSION，开启双重认证的账号必定登录失败。"
+    warn "[警告] 本机执行 `fastlane spaceauth -u #{apple_id}` 生成后填入网页。"
+  end
+
+  begin
+    Spaceship::Tunes.login(apple_id, password)
+  rescue Spaceship::InvalidUserCredentialsError => e
+    warn_credential_hints
+    raise e
+  end
+
+  team_id = ENV["TEAM_ID"].to_s.strip
+  Spaceship::Tunes.select_team(team_id: team_id.empty? ? nil : team_id)
+  puts "[认证] 成功，当前 Team: #{Spaceship::Tunes.client.team_id}"
+end
+
+# ---- 推断 Team ID ----
+# App Store Connect API 没有直接返回 Team ID 的接口，用三种途径依次尝试
+def detect_team_id(certificates: nil, bundle_ids: nil, profiles: nil)
+  # 1. 证书 X.509 主题里的 OU 就是 Team ID，最可靠
+  (certificates || []).each do |c|
+    content = (c.certificate_content rescue nil)
+    next if content.to_s.empty?
+    begin
+      x509 = OpenSSL::X509::Certificate.new(Base64.decode64(content))
+      ou = x509.subject.to_a.find { |name, _, _| name == "OU" }
+      return [ou[1], "证书 #{c.name} 的 OU 字段"] if ou && !ou[1].to_s.empty?
+    rescue StandardError
+      next
+    end
+  end
+
+  # 2. Bundle ID 的 seed_id（App ID 前缀），绝大多数账号等于 Team ID
+  (bundle_ids || []).each do |b|
+    seed = (b.seed_id rescue nil)
+    return [seed, "Bundle ID #{b.identifier} 的 App ID 前缀"] unless seed.to_s.empty?
+  end
+
+  # 3. 描述文件内嵌 plist 里的 TeamIdentifier
+  (profiles || []).each do |p|
+    content = (p.profile_content rescue nil)
+    next if content.to_s.empty?
+    plist = Base64.decode64(content).force_encoding("BINARY")
+    if plist =~ /<key>TeamIdentifier<\/key>.*?<string>([^<]+)<\/string>/m
+      return [$1, "描述文件 #{p.name} 的 TeamIdentifier"]
+    end
+  end
+
+  [nil, nil]
 end
 
 def mask_email(email)
