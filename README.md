@@ -26,7 +26,12 @@ scripts/
 
 **默认：App Store Connect API Key**（CI 里不需要 2FA，不会 30 天过期）
 
-1. App Store Connect → 用户和访问 → 集成 → 团队密钥 → 生成密钥，角色选 **App Manager** 或 **Admin**
+1. App Store Connect → 用户和访问 → 集成 → **团队密钥** → 生成密钥，角色必须选 **Admin**
+
+   ⚠️ 只有 **Account Holder / Admin** 能创建证书、注册 App ID、创建 Profile。
+   **App Manager 和 Developer 角色不行**——即使在「用户和访问」里单独勾了
+   Certificates, Identifiers & Profiles，也只是有限访问，建不了证书和 Profile。
+   角色选错的话本工具四个任务里有三个会失败。
 2. 下载 `AuthKey_XXXX.p8`（只能下一次），记下 Key ID 和 Issuer ID
 3. 拼成 JSON：
 
@@ -111,7 +116,8 @@ GitHub 的 dispatch API 不返回 run id。网页每次生成 `request_id`，工
 |---|---|
 | 找不到运行记录 / dispatch 404 | 工作流不在默认分支上 |
 | `缺少必需的环境变量` | 凭据 JSON 字段不全，或 Secret 没配 |
-| `Authentication credentials are missing or invalid` | API Key 角色不足（要 App Manager+），或 `.p8` 粘贴时丢了换行 |
+| `Authentication credentials are missing or invalid` | `.p8` 粘贴时丢了换行，或 Key ID / Issuer ID 填错 |
+| `403 FORBIDDEN` / `not permitted` | API Key 角色不是 Admin。证书、App ID、Profile 只有 Account Holder / Admin 能建 |
 | 卡在登录 / 要验证码 | Apple ID 模式没给 `FASTLANE_SESSION`，或 session 过期 |
 | `maximum number of certificates` | Distribution 证书上限 2~3 张，去 Portal 吊销旧的 |
 | `There is no App ID with ID` | 先跑创建 Bundle ID |
