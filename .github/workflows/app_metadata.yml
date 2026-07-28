@@ -1,0 +1,73 @@
+name: App Metadata
+
+run-name: 元数据 ${{ inputs.action }} ${{ inputs.bundle_identifier }} · ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: 任务 ID
+        required: false
+        default: manual
+      credentials:
+        description: 凭据 JSON；留空用仓库 Secret
+        required: false
+        default: ''
+      bundle_identifier:
+        description: Bundle ID
+        required: true
+      action:
+        description: 操作
+        required: true
+        default: read
+        type: choice
+        options:
+          - read
+          - update
+      locale:
+        description: 语言
+        required: true
+        default: zh-Hans
+        type: choice
+        options:
+          - zh-Hans
+          - en-US
+          - en-GB
+          - en-AU
+      metadata:
+        description: >-
+          要更新的字段 JSON，未出现的不动。可用键：
+          name / subtitle / privacy_url / description / keywords /
+          whats_new / promotional_text / marketing_url / support_url
+        required: false
+        default: '{}'
+
+permissions:
+  contents: read
+
+jobs:
+  metadata:
+    runs-on: ${{ vars.RUNNER_LABEL || 'macos-latest' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-apple
+        with:
+          credentials: ${{ inputs.credentials || secrets.APPLE_CREDENTIALS }}
+
+      - name: App metadata
+        env:
+          BUNDLE_IDENTIFIER: ${{ inputs.bundle_identifier }}
+          METADATA_ACTION: ${{ inputs.action }}
+          METADATA_LOCALE: ${{ inputs.locale }}
+          METADATA_JSON: ${{ inputs.metadata }}
+        run: ruby scripts/app_metadata.rb
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: metadata-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 7

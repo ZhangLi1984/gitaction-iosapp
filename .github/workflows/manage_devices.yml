@@ -1,0 +1,50 @@
+name: Manage Devices
+
+run-name: 设备 ${{ inputs.device_action }} · ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id: { description: 任务 ID, required: false, default: manual }
+      credentials: { description: 凭据 JSON；留空用仓库 Secret, required: false, default: '' }
+      device_action:
+        description: 操作
+        required: true
+        default: register
+        type: choice
+        options: [register, enable, disable, rename]
+      udids: { description: UDID，多个用逗号分隔, required: true }
+      names: { description: 设备名称，与 UDID 一一对应，逗号分隔, required: false, default: '' }
+      platform:
+        description: 平台
+        required: true
+        default: IOS
+        type: choice
+        options: [IOS, MAC_OS]
+
+permissions:
+  contents: read
+
+jobs:
+  devices:
+    runs-on: ${{ vars.RUNNER_LABEL || 'macos-latest' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-apple
+        with:
+          credentials: ${{ inputs.credentials || secrets.APPLE_CREDENTIALS }}
+      - name: Manage devices
+        env:
+          DEVICE_ACTION: ${{ inputs.device_action }}
+          DEVICE_UDIDS: ${{ inputs.udids }}
+          DEVICE_NAMES: ${{ inputs.names }}
+          DEVICE_PLATFORM: ${{ inputs.platform }}
+        run: ruby scripts/manage_devices.rb
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: devices-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 7

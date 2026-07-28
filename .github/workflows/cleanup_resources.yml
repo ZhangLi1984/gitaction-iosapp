@@ -1,0 +1,43 @@
+name: Cleanup Resources
+
+run-name: 清理 ${{ inputs.target }} · ${{ inputs.request_id }}
+
+# ⚠️ 吊销证书后，所有用它签名的 Profile 立即失效
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id: { description: 任务 ID, required: false, default: manual }
+      credentials: { description: 凭据 JSON；留空用仓库 Secret, required: false, default: '' }
+      target:
+        description: 清理对象
+        required: true
+        default: profile
+        type: choice
+        options: [profile, certificate]
+      ids: { description: 资源 ID，逗号分隔, required: true }
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ${{ vars.RUNNER_LABEL || 'macos-latest' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-apple
+        with:
+          credentials: ${{ inputs.credentials || secrets.APPLE_CREDENTIALS }}
+      - name: Cleanup
+        env:
+          CLEANUP_TARGET: ${{ inputs.target }}
+          CLEANUP_IDS: ${{ inputs.ids }}
+        run: ruby scripts/cleanup_resources.rb
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cleanup-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 7

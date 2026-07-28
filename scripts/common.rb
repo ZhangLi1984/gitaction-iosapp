@@ -23,9 +23,12 @@ end
 # 支持两种认证方式：
 #   1. App Store Connect API Key（推荐，CI 里不需要 2FA）
 #   2. Apple ID + 密码（需要 FASTLANE_SESSION，否则会卡在 2FA）
-def login!
+#   portal: 开发者门户（证书 / Bundle ID / Profile / 设备）
+#   tunes:  App Store Connect（App / 元数据）
+# API Key 一把钥匙同时覆盖两边，Apple ID 模式则要显式指定登哪边
+def login!(portal: true, tunes: false)
   if ENV["ASC_KEY_ID"].to_s.strip.empty?
-    login_with_apple_id!
+    login_with_apple_id!(portal: portal, tunes: tunes)
   else
     login_with_api_key!
   end
@@ -42,12 +45,12 @@ def login_with_api_key!
   puts "[认证] 成功"
 end
 
-def login_with_apple_id!
+def login_with_apple_id!(portal: true, tunes: false)
   apple_id = env("APPLE_ID")
   password = env("APPLE_PASSWORD")
   team_id  = env("TEAM_ID", required: false)
 
-  puts "[认证] 使用 Apple ID: #{mask_email(apple_id)}"
+  puts "[认证] 使用 Apple ID: #{mask_email(apple_id)}（portal=#{portal} tunes=#{tunes}）"
   if ENV["FASTLANE_SESSION"].to_s.strip.empty?
     warn "[警告] 未提供 FASTLANE_SESSION，账号若开启双重认证会登录失败。"
     warn "[警告] 本机执行 `fastlane spaceauth -u #{apple_id}` 生成后再填入。"
@@ -57,8 +60,8 @@ def login_with_apple_id!
     Spaceship::ConnectAPI.login(
       apple_id,
       password,
-      use_portal: true,
-      use_tunes: false,
+      use_portal: portal,
+      use_tunes: tunes,
       portal_team_id: team_id
     )
   rescue Spaceship::InvalidUserCredentialsError => e
@@ -80,32 +83,18 @@ def warn_credential_hints
   warn ""
 end
 
-# 创建 App 只能走旧的 iTunes Connect 接口（Apple 未开放 API Key 方式）
+# 只登 App Store Connect 那一侧
 def login_tunes!
-  unless ENV["ASC_KEY_ID"].to_s.strip.empty?
-    raise "创建 App 不支持 App Store Connect API Key —— Apple 没有开放这个接口。" \
-          "请在网页上把凭据模式切到「Apple ID」，并提供 FASTLANE_SESSION。"
-  end
+  login!(portal: false, tunes: true)
+end
 
-  apple_id = env("APPLE_ID")
-  password = env("APPLE_PASSWORD")
-  puts "[认证] 使用 Apple ID 登录 App Store Connect: #{mask_email(apple_id)}"
-
-  if ENV["FASTLANE_SESSION"].to_s.strip.empty?
-    warn "[警告] 未提供 FASTLANE_SESSION，开启双重认证的账号必定登录失败。"
-    warn "[警告] 本机执行 `fastlane spaceauth -u #{apple_id}` 生成后填入网页。"
-  end
-
-  begin
-    Spaceship::Tunes.login(apple_id, password)
-  rescue Spaceship::InvalidUserCredentialsError => e
-    warn_credential_hints
-    raise e
-  end
-
-  team_id = ENV["TEAM_ID"].to_s.strip
-  Spaceship::Tunes.select_team(team_id: team_id.empty? ? nil : team_id)
-  puts "[认证] 成功，当前 Team: #{Spaceship::Tunes.client.team_id}"
+# 找 App，找不到给出清晰提示
+def find_app!(identifier)
+  app = Spaceship::ConnectAPI::App.find(identifier)
+  return app if app
+  available = (Spaceship::ConnectAPI::App.all.map(&:bundle_id) rescue [])
+  raise "在 App Store Connect 里找不到 Bundle ID 为 #{identifier} 的 App。" \
+        "#{available.empty? ? '该账号下没有任何 App。' : "该账号下现有：#{available.join(', ')}"}"
 end
 
 # ---- 推断 Team ID ----

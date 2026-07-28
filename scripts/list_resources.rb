@@ -2,7 +2,8 @@
 require_relative "common"
 
 run_task do
-  login!
+  # tunes 一起登上，这样能顺带把 App 列表也拉回来
+  login!(portal: true, tunes: true)
 
   raw_certs = Spaceship::ConnectAPI::Certificate.all
   certificates = raw_certs.map { |c| certificate_summary(c) }
@@ -33,6 +34,19 @@ run_task do
   end
   puts "[资源] 设备 #{devices.size} 台"
 
+  # App 列表拉不到不算致命（可能只有门户权限），降级成空列表
+  apps =
+    begin
+      Spaceship::ConnectAPI::App.all.map do |a|
+        { "id" => a.id, "name" => a.name, "bundle_id" => a.bundle_id,
+          "sku" => a.sku, "primary_locale" => a.primary_locale }
+      end
+    rescue StandardError => e
+      warn "[资源] App 列表获取失败（不影响其它资源）：#{e.message}"
+      []
+    end
+  puts "[资源] App #{apps.size} 个"
+
   team_id, source = detect_team_id(
     certificates: raw_certs, bundle_ids: raw_bundle_ids, profiles: raw_profiles
   )
@@ -47,6 +61,7 @@ run_task do
     "action" => "list_resources",
     "team_id" => team_id,
     "team_id_source" => source,
+    "apps" => apps,
     "certificates" => certificates,
     "bundle_ids" => bundle_ids,
     "profiles" => profiles,

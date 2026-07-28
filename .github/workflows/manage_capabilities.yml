@@ -1,0 +1,46 @@
+name: Manage Capabilities
+
+run-name: 能力 ${{ inputs.capability_action }} ${{ inputs.bundle_identifier }} · ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id: { description: 任务 ID, required: false, default: manual }
+      credentials: { description: 凭据 JSON；留空用仓库 Secret, required: false, default: '' }
+      bundle_identifier: { description: Bundle ID, required: true }
+      capability_action:
+        description: 操作
+        required: true
+        default: list
+        type: choice
+        options: [list, enable, disable]
+      capabilities:
+        description: 能力类型，逗号分隔，如 PUSH_NOTIFICATIONS,IN_APP_PURCHASE
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  capabilities:
+    runs-on: ${{ vars.RUNNER_LABEL || 'macos-latest' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-apple
+        with:
+          credentials: ${{ inputs.credentials || secrets.APPLE_CREDENTIALS }}
+      - name: Manage capabilities
+        env:
+          BUNDLE_IDENTIFIER: ${{ inputs.bundle_identifier }}
+          CAPABILITY_ACTION: ${{ inputs.capability_action }}
+          CAPABILITIES: ${{ inputs.capabilities }}
+        run: ruby scripts/manage_capabilities.rb
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capabilities-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 7
