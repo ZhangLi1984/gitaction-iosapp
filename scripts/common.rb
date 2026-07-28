@@ -5,6 +5,10 @@ require "openssl"
 require "fileutils"
 require "spaceship"
 
+# 不加这行时 puts(stdout) 和 warn(stderr) 在 Actions 日志里会乱序
+$stdout.sync = true
+$stderr.sync = true
+
 OUTPUT_DIR = File.expand_path("../output", __dir__)
 
 def env(key, required: true, default: nil)
@@ -49,13 +53,29 @@ def login_with_apple_id!
     warn "[警告] 本机执行 `fastlane spaceauth -u #{apple_id}` 生成后再填入。"
   end
 
-  Spaceship::ConnectAPI.login(
-    apple_id,
-    password,
-    use_portal: true,
-    use_tunes: false,
-    portal_team_id: team_id
-  )
+  begin
+    Spaceship::ConnectAPI.login(
+      apple_id,
+      password,
+      use_portal: true,
+      use_tunes: false,
+      portal_team_id: team_id
+    )
+  rescue Spaceship::InvalidUserCredentialsError => e
+    # Apple 返回 401 时抛这个，报错本身不区分原因，这里把常见原因列清楚
+    warn ""
+    warn "[排查] Apple 拒绝了这组账号密码，常见原因："
+    warn "  1. 用了 App 专用密码（app-specific password）。开发者门户登录必须用 Apple 账号的真实密码，"
+    warn "     App 专用密码只对上传/公证有效。"
+    warn "  2. 密码本身不对。先去 https://developer.apple.com/account 手动登录验证一次。"
+    warn "  3. 密码里有空格或不可见字符被一起复制进来了。"
+    warn "  4. 账号被 Apple 要求改密码 / 需接受新协议，此时网页登录会有提示。"
+    warn ""
+    warn "[建议] 改用 App Store Connect API Key 模式，不需要密码、不受 2FA 影响、不会 30 天过期。"
+    warn "       生成路径：App Store Connect → 用户和访问 → 集成 → 团队密钥"
+    warn ""
+    raise e
+  end
   puts "[认证] 成功"
 end
 
