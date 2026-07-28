@@ -1,0 +1,42 @@
+name: List Resources
+
+run-name: 刷新资源 · ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: 前端生成的任务 ID
+        required: false
+        default: manual
+      credentials:
+        description: 凭据 JSON；留空则使用仓库 Secret APPLE_CREDENTIALS
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    runs-on: ${{ vars.RUNNER_LABEL || 'macos-latest' }}
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-apple
+        with:
+          credentials: ${{ inputs.credentials || secrets.APPLE_CREDENTIALS }}
+
+      - name: List resources
+        run: ruby scripts/list_resources.rb
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resources-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 7

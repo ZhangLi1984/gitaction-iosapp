@@ -1,0 +1,61 @@
+name: Create Bundle ID
+
+run-name: 创建 Bundle ID ${{ inputs.identifier }} · ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: 前端生成的任务 ID
+        required: false
+        default: manual
+      credentials:
+        description: 凭据 JSON；留空则使用仓库 Secret APPLE_CREDENTIALS
+        required: false
+        default: ''
+      identifier:
+        description: Bundle ID，例如 com.demo.app
+        required: true
+      name:
+        description: 显示名称（只允许字母数字和空格）
+        required: true
+      platform:
+        description: 平台
+        required: true
+        default: IOS
+        type: choice
+        options:
+          - IOS
+          - MAC_OS
+          - UNIVERSAL
+
+permissions:
+  contents: read
+
+jobs:
+  create:
+    runs-on: ${{ vars.RUNNER_LABEL || 'macos-latest' }}
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-apple
+        with:
+          credentials: ${{ inputs.credentials || secrets.APPLE_CREDENTIALS }}
+
+      - name: Create bundle id
+        env:
+          BUNDLE_IDENTIFIER: ${{ inputs.identifier }}
+          BUNDLE_NAME: ${{ inputs.name }}
+          BUNDLE_PLATFORM: ${{ inputs.platform }}
+        run: ruby scripts/create_bundle_id.rb
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundleid-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 7

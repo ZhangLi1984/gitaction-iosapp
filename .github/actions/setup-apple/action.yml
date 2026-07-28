@@ -1,0 +1,39 @@
+name: Setup Apple Toolchain
+description: 安装 Ruby + fastlane(spaceship)，并把凭据 JSON 解析成环境变量
+
+inputs:
+  credentials:
+    description: 凭据 JSON（来自 workflow 输入或仓库 Secret）
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.3'
+
+    - name: Cache gems
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.gems
+        key: ${{ runner.os }}-fastlane-gems-v1
+
+    - name: Install fastlane
+      shell: bash
+      run: |
+        export GEM_HOME="$GITHUB_WORKSPACE/.gems"
+        echo "GEM_HOME=$GEM_HOME" >> "$GITHUB_ENV"
+        echo "$GEM_HOME/bin" >> "$GITHUB_PATH"
+        if ruby -e 'require "spaceship"' 2>/dev/null; then
+          echo "spaceship 已就绪（命中缓存）"
+        else
+          gem install fastlane --no-document
+        fi
+
+    - name: Prepare credentials
+      shell: bash
+      env:
+        CREDENTIALS: ${{ inputs.credentials }}
+      run: ruby scripts/prepare_credentials.rb

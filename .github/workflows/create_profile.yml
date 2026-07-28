@@ -1,0 +1,79 @@
+name: Create Provisioning Profile
+
+run-name: 创建 Profile ${{ inputs.profile_name }} · ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: 前端生成的任务 ID
+        required: false
+        default: manual
+      credentials:
+        description: 凭据 JSON；留空则使用仓库 Secret APPLE_CREDENTIALS
+        required: false
+        default: ''
+      bundle_identifier:
+        description: Bundle ID，例如 com.demo.app
+        required: true
+      profile_name:
+        description: Profile 名称
+        required: true
+      profile_type:
+        description: Profile 类型
+        required: true
+        default: IOS_APP_STORE
+        type: choice
+        options:
+          - IOS_APP_STORE
+          - IOS_APP_ADHOC
+          - IOS_APP_DEVELOPMENT
+          - IOS_APP_INHOUSE
+          - MAC_APP_STORE
+          - MAC_APP_DEVELOPMENT
+      certificate_ids:
+        description: 证书 ID，逗号分隔；留空则自动选择（仅当只有 1 张时）
+        required: false
+        default: ''
+      replace_existing:
+        description: 同名 Profile 是否先删除重建
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: ${{ vars.RUNNER_LABEL || 'macos-latest' }}
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-apple
+        with:
+          credentials: ${{ inputs.credentials || secrets.APPLE_CREDENTIALS }}
+
+      - name: Create profile
+        env:
+          BUNDLE_IDENTIFIER: ${{ inputs.bundle_identifier }}
+          PROFILE_NAME: ${{ inputs.profile_name }}
+          PROFILE_TYPE: ${{ inputs.profile_type }}
+          CERTIFICATE_IDS: ${{ inputs.certificate_ids }}
+          REPLACE_EXISTING: ${{ inputs.replace_existing }}
+        run: ruby scripts/create_profile.rb
+
+      # 失败时 output/result.json 里带着候选证书列表，前端要靠它弹出选择框
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 7

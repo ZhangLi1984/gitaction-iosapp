@@ -1,0 +1,13 @@
+# 工作流产物（证书私钥、profile），绝不能进版本库
+output/
+*.p12
+*.cer
+*.mobileprovision
+*.key.pem
+*.p8
+
+# 凭据
+*.env
+.env
+
+.DS_Store

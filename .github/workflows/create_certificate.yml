@@ -1,0 +1,67 @@
+name: Create Certificate
+
+run-name: 创建证书 ${{ inputs.certificate_type }} · ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: 前端生成的任务 ID（用于回查本次运行）
+        required: false
+        default: manual
+      credentials:
+        description: 凭据 JSON；留空则使用仓库 Secret APPLE_CREDENTIALS
+        required: false
+        default: ''
+      certificate_type:
+        description: 证书类型
+        required: true
+        default: DISTRIBUTION
+        type: choice
+        options:
+          - DISTRIBUTION
+          - IOS_DISTRIBUTION
+          - DEVELOPMENT
+          - IOS_DEVELOPMENT
+      p12_password:
+        description: 导出 .p12 的密码
+        required: true
+      common_name:
+        description: CSR 的 Common Name
+        required: false
+        default: apple-dev-tool
+
+permissions:
+  contents: read
+
+jobs:
+  create:
+    # 默认 macos-latest；设置仓库变量 RUNNER_LABEL=ubuntu-latest 可切到便宜 10 倍的 Linux
+    runs-on: ${{ vars.RUNNER_LABEL || 'macos-latest' }}
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-apple
+        with:
+          credentials: ${{ inputs.credentials || secrets.APPLE_CREDENTIALS }}
+
+      - name: Create certificate
+        env:
+          CERTIFICATE_TYPE: ${{ inputs.certificate_type }}
+          P12_PASSWORD: ${{ inputs.p12_password }}
+          COMMON_NAME: ${{ inputs.common_name }}
+        run: |
+          echo "::add-mask::$P12_PASSWORD"
+          ruby scripts/create_certificate.rb
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: certificate-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: warn
+          # 产物里含私钥，只保留 1 天，请立刻下载
+          retention-days: 1
